@@ -107,9 +107,9 @@ predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
     nlag<- config$user_option_values$n_lag
     precision <- config$user_option_values$precision
     # Use config$user_option_values and config$additional_continuous_covariates as needed
-  }
-  else {
-        covariate_names <- c()
+  } else {
+      covariate_names <- c()
+      precision <- 0.01
   }
   df <- read.csv(future_fn) #the two columns on the next lines are not normally included in the future df
   df$Cases <- rep(NA, nrow(df))
