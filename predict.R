@@ -5,8 +5,6 @@
 # month = month
 # ID_year = year
 # ID_spat = location
-# rainsum = rainfall
-# meantemperature = mean_temperature
 #note: The model uses either weeks or months
 #install.packages('yaml')
 library(yaml)
@@ -46,57 +44,6 @@ parse_model_configuration <- function(file_path) {
   )
 }
 
-generate_bacic_model <- function(df, covariates, nlag) {
-  formula_str <- paste(
-    "Cases ~ 1 +",
-    "f(ID_spat, model='iid', replicate=ID_year) +",
-    "f(ID_time_cyclic, model='rw1', cyclic=TRUE, scale.model=TRUE)"
-  )
-  model_formula <- as.formula(formula_str)
-
-  return(list(formula = model_formula, data = df))
-}
-
-generate_lagged_model <- function(df, covariates, nlag) {
-  basis_list <- list()
-
-  for (cov in covariates) {
-    var_data <- df[[cov]]
-    basis <- crossbasis(
-      var_data, lag = nlag,
-      argvar = list(fun = "ns", knots = equalknots(var_data, 2)),
-      arglag = list(fun = "ns", knots = nlag / 2),
-      group = df$ID_spat
-    )
-    basis_name <- paste0("basis_", cov)
-    colnames(basis) <- paste0(basis_name, ".", colnames(basis))
-    basis_list[[basis_name]] <- basis
-  }
-
-  # Combine basis matrices into one data frame
-  basis_df <- do.call(cbind, basis_list)
-
-  # Merge with the original dataframe
-  model_data <- cbind(df, basis_df)
-
-  # Get all new column names added
-  basis_columns <- colnames(basis_df)
-
-  # Generate formula string using column names directly
-  basis_terms <- paste(basis_columns, collapse = " + ")
-  print(basis_terms)
-  formula_str <- paste(
-    "Cases ~ 1 +",
-    "f(ID_spat, model='iid', replicate=ID_year) +",
-    "f(ID_time_cyclic, model='rw1', cyclic=TRUE, scale.model=TRUE) +",
-    basis_terms
-  )
-
-  model_formula <- as.formula(formula_str)
-
-  return(list(formula = model_formula, data = model_data))
-}
-
 predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
   #load(file = model_fn) #would normally load a model here
   if (config_fn != "") {
@@ -108,8 +55,7 @@ predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
     precision <- config$user_option_values$precision
     # Use config$user_option_values and config$additional_continuous_covariates as needed
   } else {
-      covariate_names <- c("rainfall", "mean_temperature")
-      precision <- 0.01
+    precision <- 0.01
   }
   df <- read.csv(future_fn) #the two columns on the next lines are not normally included in the future df
   df$Cases <- rep(NA, nrow(df))
@@ -130,15 +76,9 @@ predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
   
   df$ID_year <- df$ID_year - min(df$ID_year) + 1 #makes the years 1, 2, ...
 
-  if (length(covariate_names) == 0) {
-    generated <- generate_bacic_model(df, covariate_names, nlag)
-  } else {
-    generated <- generate_lagged_model(df, covariate_names, nlag)
-  }
-  lagged_formula <- generated$formula
-  print(colnames(df))
-  df <- generated$data
-  print(colnames(df))
+  formula <- "Cases ~ 1 + f(ID_spat, model='iid', replicate=ID_year) +
+              f(ID_time_cyclic, model='rw1', cyclic=TRUE, scale.model=TRUE)"
+  
   model <- inla(formula = lagged_formula, data = df, family = "nbinomial", offset = log(E),
                 control.inla = list(strategy = 'adaptive'),
                 control.compute = list(dic = TRUE, config = TRUE, cpo = TRUE, return.marginals = FALSE),
@@ -170,7 +110,7 @@ predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
   
   # Write new dataframe to file, and save the model?
   write.csv(new.df, preds_fn, row.names = FALSE)
-  saveRDS(model, file = model_fn)
+  #saveRDS(model, file = model_fn)
 }
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -182,7 +122,7 @@ if (length(args) >= 1) {
   hist_fn <- args[2]
   future_fn <- args[3]
   preds_fn <- args[4]
-  if (length(args) == 5) {
+  if (length(args) >= 5) {
     config_fn <- args[5]
   } else {
     config_fn <- ""
