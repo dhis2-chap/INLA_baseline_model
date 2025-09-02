@@ -37,9 +37,6 @@ adapters: {'Cases': 'disease_cases',
            'ID_spat': 'location',
            }
 
-docker_env:
-  image: ghcr.io/dhis2-chap/docker_r_inla:master
-
 entry_points:
   train:
     parameters:
