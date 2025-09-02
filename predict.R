@@ -76,10 +76,10 @@ predict_chap <- function(model_fn, hist_fn, future_fn, preds_fn, config_fn=""){
   
   df$ID_year <- df$ID_year - min(df$ID_year) + 1 #makes the years 1, 2, ...
 
-  formula <- "Cases ~ 1 + f(ID_spat, model='iid', replicate=ID_year) +
-              f(ID_time_cyclic, model='rw1', cyclic=TRUE, scale.model=TRUE)"
+  formula <- Cases ~ 1 + f(ID_spat, model='iid', replicate=ID_year) +
+              f(ID_time_cyclic, model='rw1', cyclic=TRUE, scale.model=TRUE)
   
-  model <- inla(formula = lagged_formula, data = df, family = "nbinomial", offset = log(E),
+  model <- inla(formula = formula, data = df, family = "nbinomial", offset = log(E),
                 control.inla = list(strategy = 'adaptive'),
                 control.compute = list(dic = TRUE, config = TRUE, cpo = TRUE, return.marginals = FALSE),
                 control.fixed = list(correlation.matrix = TRUE, prec.intercept = 1e-4, prec = precision),
@@ -132,8 +132,8 @@ if (length(args) >= 1) {
 
 #Testing
 
-# model_fn <- "example_data_monthly/model"
-# hist_fn <- "example_data_monthly/historic_data.csv"
-# future_fn <- "example_data_monthly/future_data.csv"
-# preds_fn <- "example_data_monthly/predictions.csv"
+model_fn <- "example_data_monthly/model"
+hist_fn <- "example_data_monthly/historic_data.csv"
+future_fn <- "example_data_monthly/future_data.csv"
+preds_fn <- "example_data_monthly/predictions.csv"
 
