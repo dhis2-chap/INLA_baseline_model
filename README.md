@@ -109,3 +109,4 @@ lagged_formula <- Cases ~ 1 + f(ID_spat, model='iid') +
 ```
 The formula defines the relationship between the different columns in the dataframe and the exogenous variables, which is then used by the inla call to fit the model. We also choose the 'nbinomial' family and an offset. The code after the model call samples from the fit model and writes the final dataframe to the the filelocation in 'preds_fn'. The code after the function ends is used when running the Rscript command, either by CHAP or from your own command line and assigns the arguments to the correct variables and calls predict_chap.   
 
+
