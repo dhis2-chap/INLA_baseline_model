@@ -11,9 +11,9 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Copy project files
-COPY pyproject.toml uv.lock ./
+COPY .python-version pyproject.toml uv.lock ./
 
-# Install dependencies
+# Install dependencies (uv will use .python-version to get Python 3.13)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
@@ -40,21 +40,14 @@ COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 
 # Copy Python venv and application files
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/pyproject.toml /app/uv.lock /app/
+COPY --from=builder /app/.python-version /app/pyproject.toml /app/uv.lock /app/
 COPY train.R predict.R lib.R inla_baseline_service.py /app/
 
 WORKDIR /app
 
-# Create python symlink that venv scripts expect (remove existing one first)
-RUN rm -f /app/.venv/bin/python /app/.venv/bin/python3 /app/.venv/bin/python3.13 && \
-    ln -s /usr/bin/python3 /app/.venv/bin/python && \
-    ln -s /usr/bin/python3 /app/.venv/bin/python3 && \
-    ln -s /usr/bin/python3 /app/.venv/bin/python3.13
-
 # Set up environment to use the venv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH=/app/.venv/bin:${PATH}
-ENV PYTHONPATH=/app/.venv/lib/python3.13/site-packages
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONFAULTHANDLER=1
@@ -81,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health').read()" || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/app/.venv/bin/gunicorn", "-k", "uvicorn.workers.UvicornWorker", "inla_baseline_service:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "60", "--graceful-timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "200", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["uv", "run", "--no-sync", "gunicorn", "-k", "uvicorn.workers.UvicornWorker", "inla_baseline_service:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "60", "--graceful-timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "200", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "--error-logfile", "-"]
