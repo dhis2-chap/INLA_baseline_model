@@ -46,11 +46,15 @@ COPY train.R predict.R lib.R inla_baseline_service.py /app/
 WORKDIR /app
 
 # Create python symlink that venv scripts expect (remove existing one first)
-RUN rm -f /app/.venv/bin/python && ln -s /usr/bin/python3 /app/.venv/bin/python
+RUN rm -f /app/.venv/bin/python /app/.venv/bin/python3 /app/.venv/bin/python3.13 && \
+    ln -s /usr/bin/python3 /app/.venv/bin/python && \
+    ln -s /usr/bin/python3 /app/.venv/bin/python3 && \
+    ln -s /usr/bin/python3 /app/.venv/bin/python3.13
 
 # Set up environment to use the venv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH=/app/.venv/bin:${PATH}
+ENV PYTHONPATH=/app/.venv/lib/python3.13/site-packages
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONFAULTHANDLER=1
