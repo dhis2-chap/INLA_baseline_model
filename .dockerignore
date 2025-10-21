@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+venv
+
+# Example data (can be large)
+example_data
+example_data_monthly
+
+# Reports and output files
+*.pdf
+*.csv
+model
+
+# Documentation
+README.md
+CHAPKIT_USAGE.md
+report_test_baseline.pdf
+
+# Development files
+.pytest_cache
+.mypy_cache
+.ruff_cache

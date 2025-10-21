@@ -1,0 +1,10 @@
+services:
+  inla-baseline:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Optional: mount a volume for persistent data
+    # volumes:
+    #   - ./data:/app/data
