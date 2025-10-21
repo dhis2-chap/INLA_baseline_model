@@ -1,33 +1,44 @@
-# Base image with R and INLA dependencies
+# Builder stage - install Python dependencies with uv
+FROM ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim AS builder
+
+WORKDIR /workspace
+
+# Install git for fetching dependencies from git repositories
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# UV configuration for better build performance
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Copy project files
+COPY pyproject.toml ./
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# Cleanup Python cache files
+RUN find .venv -type d -name '__pycache__' -prune -exec rm -rf {} + && \
+    find .venv -type f -name '*.py[co]' -delete || true
+
+# Runtime stage - R INLA base image
 FROM ghcr.io/dhis2-chap/docker_r_inla@sha256:adfc916416f7cd56d6d0368cfdf22d5a24844cafe626259ca9dc48a695142feb
 
-# Install Python 3.13 from deadsnakes PPA
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    git \
-    curl \
-    && add-apt-repository ppa:deadsnakes/ppa -y \
-    && apt-get update \
-    && apt-get install -y \
-    python3.13 \
-    python3.13-venv \
-    python3.13-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# OCI labels for container metadata
+LABEL org.opencontainers.image.title="INLA Baseline Model"
+LABEL org.opencontainers.image.description="INLA Bayesian hierarchical model with chapkit integration"
+LABEL org.opencontainers.image.vendor="DHIS2 CHAP"
+LABEL org.opencontainers.image.source="https://github.com/dhis2-chap/INLA_baseline_model"
 
-# Install pip for Python 3.13
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13
+# Copy Python virtual environment from builder
+COPY --from=builder /workspace/.venv /opt/venv
 
-# Create a virtual environment with Python 3.13 and activate it
+# Set up environment to use the venv
 ENV VIRTUAL_ENV=/opt/venv
-RUN python3.13 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Upgrade pip
-RUN pip install --upgrade pip
-
-# Install chapkit from the specific GitHub branch
-RUN pip install git+https://github.com/winterop-com/chapkit.git@fix-ml-config-additions
+ENV PATH=/opt/venv/bin:$PATH
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONFAULTHANDLER=1
 
 # Set working directory
 WORKDIR /app
@@ -38,8 +49,9 @@ COPY train.R predict.R lib.R inla_baseline_service.py ./
 # Expose port for FastAPI
 EXPOSE 8000
 
-# Set environment variable for FastAPI
-ENV PYTHONUNBUFFERED=1
+# Health check to verify the API is responding
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
 
 # Command to run the service
 CMD ["fastapi", "run", "inla_baseline_service.py", "--host", "0.0.0.0", "--port", "8000"]

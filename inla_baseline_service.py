@@ -54,11 +54,11 @@ runner = ShellModelRunner(
 
 # Create ML service info with metadata from MLproject
 info = MLServiceInfo(
-    display_name="INLA Baseline Model",
+    display_name="INLA Baseline Model (chapkit)",
     version="1.0.0",
     summary="A Bayesian hierarchical model implemented with the INLA library",
     description=(
-        "Uses a cyclic random effect for months/weeks shared across all districts "
+        "(Uses chapkit) Uses a cyclic random effect for months/weeks shared across all districts "
         "alongside an IID effect for each district. Supports both weekly and monthly data. "
         "Intended as a baseline model for comparison in benchmarking."
     ),
