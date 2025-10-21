@@ -1,7 +1,7 @@
-# Builder stage - install Python dependencies with uv
+# INLA Baseline Model Dockerfile
 FROM ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim AS builder
 
-WORKDIR /workspace
+WORKDIR /app
 
 # Install git for fetching dependencies from git repositories
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
@@ -17,20 +17,12 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# Make venv relocatable by fixing python symlinks and script shebangs
-RUN rm -f .venv/bin/python .venv/bin/python3 .venv/bin/python3.13 && \
-    echo '#!/bin/sh\nexec python3 "$@"' > .venv/bin/python && \
-    chmod +x .venv/bin/python && \
-    ln -s python .venv/bin/python3 && \
-    ln -s python .venv/bin/python3.13 && \
-    find .venv/bin -type f -executable -print0 | xargs -0 sed -i '1s|^#!.*/python.*|#!/usr/bin/env python3|'
-
 # Cleanup Python cache files
 RUN find .venv -type d -name '__pycache__' -prune -exec rm -rf {} + && \
     find .venv -type f -name '*.py[co]' -delete || true
 
-# Runtime stage - R INLA base image
-FROM ghcr.io/dhis2-chap/docker_r_inla@sha256:adfc916416f7cd56d6d0368cfdf22d5a24844cafe626259ca9dc48a695142feb
+# ---- runtime ----
+FROM ghcr.io/dhis2-chap/docker_r_inla@sha256:adfc916416f7cd56d6d0368cfdf22d5a24844cafe626259ca9dc48a695142feb AS runtime
 
 # OCI labels for container metadata
 LABEL org.opencontainers.image.title="INLA Baseline Model"
@@ -38,28 +30,44 @@ LABEL org.opencontainers.image.description="INLA Bayesian hierarchical model wit
 LABEL org.opencontainers.image.vendor="DHIS2 CHAP"
 LABEL org.opencontainers.image.source="https://github.com/dhis2-chap/INLA_baseline_model"
 
-# Copy Python virtual environment from builder
-COPY --from=builder /workspace/.venv /app/.venv
+# Install tini for proper signal handling
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tini && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy Python venv and application files
+COPY --from=builder /app/.venv /app/.venv
+COPY train.R predict.R lib.R inla_baseline_service.py /app/
+
+WORKDIR /app
 
 # Set up environment to use the venv
 ENV VIRTUAL_ENV=/app/.venv
-ENV PATH=/app/.venv/bin:$PATH
+ENV PATH=/app/.venv/bin:${PATH}
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONFAULTHANDLER=1
 
-# Set working directory
-WORKDIR /app
+# Server configuration
+ENV PORT=8000
+ENV TIMEOUT=60
+ENV GRACEFUL_TIMEOUT=30
+ENV KEEPALIVE=5
+ENV FORWARDED_ALLOW_IPS="*"
 
-# Copy model files
-COPY train.R predict.R lib.R inla_baseline_service.py ./
+# Worker configuration
+ENV MAX_REQUESTS=1000
+ENV MAX_REQUESTS_JITTER=200
 
-# Expose port for FastAPI
+# Logging configuration
+ENV LOG_FORMAT=json
+ENV LOG_LEVEL=INFO
+
 EXPOSE 8000
 
 # Health check to verify the API is responding
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health').read()" || exit 1
 
-# Command to run the service
-CMD ["uvicorn", "inla_baseline_service:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["sh", "-c", "effective_cpus() { base=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1); if read -r quota period < /sys/fs/cgroup/cpu.max 2>/dev/null; then if [ $quota != max ]; then echo $(( (quota + period - 1) / period )); return; fi; fi; echo $base; }; CPUS=$(effective_cpus); WORKERS=${WORKERS:-$(( CPUS * 2 + 1 ))}; FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-*}; GUNICORN_CONF=$(python -c 'import servicekit, os; print(os.path.join(os.path.dirname(servicekit.__file__), \"gunicorn.conf.py\"))'); exec gunicorn -c \"${GUNICORN_CONF}\" -k uvicorn.workers.UvicornWorker inla_baseline_service:app --bind 0.0.0.0:${PORT} --workers ${WORKERS} --timeout ${TIMEOUT} --graceful-timeout ${GRACEFUL_TIMEOUT} --keep-alive ${KEEPALIVE} --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --max-requests ${MAX_REQUESTS} --max-requests-jitter ${MAX_REQUESTS_JITTER} --worker-tmp-dir /dev/shm"]
