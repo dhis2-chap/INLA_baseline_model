@@ -38,12 +38,15 @@ RUN apt-get update && \
 # Copy uv from builder stage
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 
-# Copy Python venv and application files
-COPY --from=builder /app/.venv /app/.venv
+# Copy project files first
 COPY --from=builder /app/.python-version /app/pyproject.toml /app/uv.lock /app/
 COPY train.R predict.R lib.R inla_baseline_service.py /app/
 
 WORKDIR /app
+
+# Sync to install Python 3.13 (venv will be created)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # Set up environment to use the venv
 ENV VIRTUAL_ENV=/app/.venv
