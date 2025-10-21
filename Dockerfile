@@ -30,16 +30,23 @@ LABEL org.opencontainers.image.description="INLA Bayesian hierarchical model wit
 LABEL org.opencontainers.image.vendor="DHIS2 CHAP"
 LABEL org.opencontainers.image.source="https://github.com/dhis2-chap/INLA_baseline_model"
 
-# Install tini for proper signal handling
+# Install tini and curl for uv installation
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends tini && \
+    apt-get install -y --no-install-recommends tini curl ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy uv from builder stage
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 
 # Copy Python venv and application files
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/pyproject.toml /app/uv.lock /app/
 COPY train.R predict.R lib.R inla_baseline_service.py /app/
 
 WORKDIR /app
+
+# Create python symlink that venv scripts expect (remove existing one first)
+RUN rm -f /app/.venv/bin/python && ln -s /usr/bin/python3 /app/.venv/bin/python
 
 # Set up environment to use the venv
 ENV VIRTUAL_ENV=/app/.venv
@@ -70,4 +77,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health').read()" || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["sh", "-c", "effective_cpus() { base=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1); if read -r quota period < /sys/fs/cgroup/cpu.max 2>/dev/null; then if [ $quota != max ]; then echo $(( (quota + period - 1) / period )); return; fi; fi; echo $base; }; CPUS=$(effective_cpus); WORKERS=${WORKERS:-$(( CPUS * 2 + 1 ))}; FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-*}; GUNICORN_CONF=$(python -c 'import servicekit, os; print(os.path.join(os.path.dirname(servicekit.__file__), \"gunicorn.conf.py\"))'); exec gunicorn -c \"${GUNICORN_CONF}\" -k uvicorn.workers.UvicornWorker inla_baseline_service:app --bind 0.0.0.0:${PORT} --workers ${WORKERS} --timeout ${TIMEOUT} --graceful-timeout ${GRACEFUL_TIMEOUT} --keep-alive ${KEEPALIVE} --forwarded-allow-ips=${FORWARDED_ALLOW_IPS} --max-requests ${MAX_REQUESTS} --max-requests-jitter ${MAX_REQUESTS_JITTER} --worker-tmp-dir /dev/shm"]
+CMD ["/app/.venv/bin/gunicorn", "-k", "uvicorn.workers.UvicornWorker", "inla_baseline_service:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "60", "--graceful-timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "200", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "--error-logfile", "-"]
