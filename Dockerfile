@@ -17,6 +17,14 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Make venv relocatable by fixing python symlinks and script shebangs
+RUN rm -f .venv/bin/python .venv/bin/python3 .venv/bin/python3.13 && \
+    echo '#!/bin/sh\nexec python3 "$@"' > .venv/bin/python && \
+    chmod +x .venv/bin/python && \
+    ln -s python .venv/bin/python3 && \
+    ln -s python .venv/bin/python3.13 && \
+    find .venv/bin -type f -executable -print0 | xargs -0 sed -i '1s|^#!.*/python.*|#!/usr/bin/env python3|'
+
 # Cleanup Python cache files
 RUN find .venv -type d -name '__pycache__' -prune -exec rm -rf {} + && \
     find .venv -type f -name '*.py[co]' -delete || true
@@ -31,11 +39,11 @@ LABEL org.opencontainers.image.vendor="DHIS2 CHAP"
 LABEL org.opencontainers.image.source="https://github.com/dhis2-chap/INLA_baseline_model"
 
 # Copy Python virtual environment from builder
-COPY --from=builder /workspace/.venv /opt/venv
+COPY --from=builder /workspace/.venv /app/.venv
 
 # Set up environment to use the venv
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH=/opt/venv/bin:$PATH
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH=/app/.venv/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONFAULTHANDLER=1
