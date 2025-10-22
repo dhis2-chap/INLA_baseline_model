@@ -8,8 +8,8 @@ from pathlib import Path
 
 from chapkit import BaseConfig
 from chapkit.api import AssessedStatus, MLServiceBuilder, MLServiceInfo
-from chapkit.modules.artifact import ArtifactHierarchy
-from chapkit.modules.ml import ShellModelRunner
+from chapkit.artifact import ArtifactHierarchy
+from chapkit.ml import ShellModelRunner
 
 # Get absolute path to R scripts directory
 SCRIPTS_DIR = Path(__file__).parent
@@ -67,6 +67,7 @@ info = MLServiceInfo(
     author_assessed_status=AssessedStatus.red,
     contact_email="knut.rand@dhis2.org",
     organization="HISP Centre, University of Oslo",
+    required_covariates=["population"],
 )
 
 # Create artifact hierarchy for ML artifacts
